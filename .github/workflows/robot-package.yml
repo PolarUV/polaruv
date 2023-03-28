@@ -1,0 +1,55 @@
+name: "Build robot package"
+
+on:
+  workflow_dispatch:
+    inputs:
+      pr:
+        type: number
+        description: Pull Request number
+        required: false
+
+jobs:
+  robot-package:
+    runs-on: self-hosted
+    strategy:
+      matrix:
+        distro: [ focal, jammy, noble, bullseye, bookworm ]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: PolarUV/robot
+          ssh-key: ${{ secrets.SSH_KEY }}
+          path: robot
+          fetch-depth: 0
+      - if: github.event.inputs.pr != ''
+        name: "checkout on PR"
+        run: cd robot && git pull origin pull/${{ inputs.pr }}/head
+      - name: Export GitHub Actions cache environment variables
+        uses: actions/github-script@v7
+        with:
+          script: |
+            core.exportVariable('ACTIONS_CACHE_URL', process.env.ACTIONS_CACHE_URL || '');
+            core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN || '');
+      - name: "Make build script"
+        run: |
+          echo "#!/bin/bash" > /tmp/run.sh
+          echo "export VCPKG_FORCE_SYSTEM_BINARIES=1" >> /tmp/run.sh
+          echo 'export VCPKG_BINARY_SOURCES="clear;x-gha,readwrite;files,${{ github.workspace }}/cache/vcpkg-${{ matrix.distro }},readwrite"' >> /tmp/run.sh
+          echo "export CCACHE_DIR=${{ github.workspace }}/cache/ccache" >> /tmp/run.sh
+          echo "rm -rf /tmp/robot-${{ matrix.distro }}" >> /tmp/run.sh
+          echo "/usr/local/bin/cmake -DCMAKE_BUILD_TYPE=Release --preset release -S ${{ github.workspace }}/robot -B /tmp/robot-${{ matrix.distro }}" >> /tmp/run.sh
+          echo "/usr/local/bin/cmake --build /tmp/robot-${{ matrix.distro }}/ --target package -j 8" >> /tmp/run.sh
+          chmod +x /tmp/run.sh
+      - name: "Build"
+        run: docker run --init -e ACTIONS_CACHE_URL=ACTIONS_CACHE_URL -e ACTIONS_RUNTIME_TOKEN=ACTIONS_RUNTIME_TOKEN -v /tmp:/tmp -v ${{ github.workspace }}:${{ github.workspace }} --user puv puv-build:${{ matrix.distro }} /bin/bash /tmp/run.sh
+      - name: "Collect package"
+        uses: actions/upload-artifact@v4
+        with:
+          name: robot_${{ matrix.distro }}
+          path: /tmp/robot-${{ matrix.distro }}/polaruv_*.deb
+          compression-level: 0
+          if-no-files-found: error
+      - name: "Cleanup build dir and script"
+        run: |
+          rm -rf /tmp/robot-${{ matrix.distro }} && rm -rf /tmp/run.sh
+          docker container prune -f

@@ -1,0 +1,66 @@
+name: "Build client package"
+
+on:
+  workflow_dispatch:
+    inputs:
+      pr:
+        type: number
+        description: Pull Request number
+        required: false
+
+env:
+  VCPKG_BINARY_SOURCES: "clear;x-gha,readwrite"
+
+jobs:
+  client-package:
+    runs-on:
+      windows-latest
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - name: "Set git settings"
+        run: |
+          git config --global http.version HTTP/1.1
+          git config --global http.postBuffer 2038500000
+      - name: "Clone repo"
+        uses: actions/checkout@v4
+        with:
+          repository: PolarUV/client
+          ssh-key: ${{ secrets.SSH_KEY }}
+          submodules: 'recursive'
+          path: client
+          fetch-depth: 0
+      - if: github.event.inputs.pr != ''
+        name: "Checkout on PR"
+        run: cd client && git pull origin pull/${{ inputs.pr }}/head
+
+      - name: "Add msvc to path"
+        uses: microsoft/setup-msbuild@v2
+        with:
+          msbuild-architecture: 'x64'
+      - name: "Setup dependencies"
+        run: |
+          choco install ninja
+      - name: "Export GitHub Actions cache environment variables"
+        uses: actions/github-script@v7
+        with:
+          script: |
+            core.exportVariable('ACTIONS_CACHE_URL', process.env.ACTIONS_CACHE_URL || '');
+            core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN || '');
+      - name: "Boostrap VCPKG"
+        run: ${{ github.workspace }}\client\vcpkg\bootstrap-vcpkg.bat -disableMetrics
+      - name: "Setup cmake"
+        shell: cmd
+        run: |
+          cmake -G Ninja -S ${{ github.workspace }}\client -B ${{ github.workspace }}\client\build -DCMAKE_BUILD_TYPE=Release ^
+          -DCMAKE_CXX_COMPILER=cl -DCMAKE_C_COMPILER=cl
+      - name: "Build package"
+        run: cmake --build ${{ github.workspace }}\client\build --target package -j 4
+      - name: "Collect package"
+        uses: actions/upload-artifact@v4
+        with:
+          name: client
+          path: ${{ github.workspace }}/client/build/puv-client-*.exe
+          compression-level: 0
+          if-no-files-found: error
