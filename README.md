@@ -8,7 +8,7 @@ feedback (wip)
 
 # PoalrUV client
 
-[Build from source guide](https://github.com/PolarUV/polaruv/wiki/Client) (wip)
+[Installion guide](https://github.com/PolarUV/polaruv/wiki/Client) (wip)
 
 Releases (wip)
 
