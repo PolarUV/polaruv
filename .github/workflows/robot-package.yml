@@ -41,7 +41,7 @@ jobs:
           echo "/usr/local/bin/cmake --build /tmp/robot-${{ matrix.distro }}/ --target package -j 8" >> /tmp/run.sh
           chmod +x /tmp/run.sh
       - name: "Build"
-        run: docker run --init -e ACTIONS_CACHE_URL=ACTIONS_CACHE_URL -e ACTIONS_RUNTIME_TOKEN=ACTIONS_RUNTIME_TOKEN -v /tmp:/tmp -v ${{ github.workspace }}:${{ github.workspace }} --user puv puv-build:${{ matrix.distro }} /bin/bash /tmp/run.sh
+        run: docker run --init -e ACTIONS_CACHE_URL=ACTIONS_CACHE_URL -e ACTIONS_RUNTIME_TOKEN=ACTIONS_RUNTIME_TOKEN -v /tmp:/tmp -v ${{ github.workspace }}:${{ github.workspace }} --user puv polaruv/container:${{ matrix.distro }} /bin/bash /tmp/run.sh
       - name: "Collect package"
         uses: actions/upload-artifact@v4
         with:
