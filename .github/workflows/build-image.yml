@@ -1,0 +1,80 @@
+name: "Build container"
+
+on:
+  workflow_dispatch:
+    inputs:
+      container:
+        description: 'Container'
+        required: false
+        default: 'compiler'
+        type: choice
+        options:
+          - compiler
+          - client
+          - robot
+
+jobs:
+  build:
+    runs-on: ${{matrix.os}}
+    strategy:
+      fail-fast: false
+      matrix:
+        distro: [ focal, jammy, noble, bullseye, bookworm ]
+        os: [ ubuntu-24.04, ubuntu-24.04-arm ]
+    steps:
+      - name: Clone puv-ci
+        uses: actions/checkout@v4
+        with:
+          repository: PolarUV/puv-ci
+          ssh-key: ${{ secrets.SSH_KEY }}
+          path: puv-ci
+          fetch-depth: 0
+      - name: Setup puv-ci
+        run: |
+          cd puv-ci && ./setup
+      - name: Build ${{inputs.container}} image
+        run: |
+          source ./puv-ci/venv/bin/activate
+          ./puv-ci/build.py --container ${{ inputs.container }} --release ${{matrix.distro}}
+          podman push ${{ inputs.container }}:${{ matrix.distro }} docker-archive:/${{ runner.temp }}/${{ inputs.container }}
+      - name: Collect ${{inputs.container}} image
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{matrix.distro}}_${{matrix.os}}
+          path: ${{ runner.temp }}/${{ inputs.container }}
+          compression-level: 0
+          if-no-files-found: error
+          retention-days: 1
+
+  merge:
+    runs-on: ubuntu-24.04
+    needs:
+      - build
+    strategy:
+      matrix:
+        distro: [ focal, jammy, noble, bullseye, bookworm ]
+    steps:
+      - name: Clone puv-ci
+        uses: actions/checkout@v4
+        with:
+          repository: PolarUV/puv-ci
+          ssh-key: ${{ secrets.SSH_KEY }}
+          path: puv-ci
+          fetch-depth: 0
+      - name: Setup puv-ci
+        run: |
+          cd puv-ci && ./setup
+      - name: Get ${{matrix.distro}} image tarball
+        uses: actions/download-artifact@v4
+        with:
+          path: ${{ runner.temp }}/
+          pattern: ${{matrix.distro}}*
+      - name: Setup merge and push
+        run: |
+          ls -R ${{ runner.temp }}
+          echo "create manifest"
+          podman manifest create ${{vars.DOCKERHUB_USER}}/${{inputs.container}}:${{matrix.distro}}
+          podman manifest add ${{vars.DOCKERHUB_USER}}/${{inputs.container}}:${{matrix.distro}} docker-archive:${{ runner.temp }}/${{matrix.distro}}_ubuntu-24.04/${{inputs.container}} docker-archive:${{ runner.temp }}/${{matrix.distro}}_ubuntu-24.04-arm/${{inputs.container}}
+          echo "push manifest"
+          podman login docker.io --username '${{ vars.DOCKERHUB_USER }}' --password '${{ secrets.DOCKERHUB_PASSWORD }}'
+          podman push ${{inputs.container}}:${{matrix.distro}} docker.io/${{ vars.DOCKERHUB_USER }}/${{inputs.container}}:${{matrix.distro}}
