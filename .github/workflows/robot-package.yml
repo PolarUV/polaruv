@@ -52,3 +52,51 @@ jobs:
           path: ./build/polaruv_*.deb
           compression-level: 0
           if-no-files-found: error
+
+  rpi-image:
+    runs-on: ubuntu-24.04-arm
+    needs:
+      - robot-package
+
+    steps:
+      - name: Get bookworm arm64 deb package
+        uses: actions/download-artifact@v4
+        with:
+          path: ${{ runner.temp }}/
+          pattern: robot_bookworm_arm64
+      - name: Install robot into image
+        run: |
+          echo "download and extract image"
+          wget https://downloads.raspberrypi.com/raspios_lite_arm64/images/raspios_lite_arm64-2024-11-19/2024-11-19-raspios-bookworm-arm64-lite.img.xz
+          xz -d -v ./2024-11-19-raspios-bookworm-arm64-lite.img.xz
+          
+          echo "setup mounts"
+          res=$(sudo losetup -fP --show 2024-11-19-raspios-bookworm-arm64-lite.img)
+          sudo mkdir -p /mnt/{boot,root}
+          sudo mount ${res}p1 /mnt/boot
+          sudo mount ${res}p2 /mnt/root
+
+          echo "copy and install package"
+          ls -R ${{ runner.temp }}
+          sudo cp ${{ runner.temp }}/robot_bookworm_arm64/*.deb /mnt/root/root
+          sudo chroot /mnt/root /usr/bin/bash -c "apt install /root/*.deb"
+          sudo chroot /mnt/root /usr/bin/bash -c "rm -rf /root/*.deb"
+          
+          echo "Setup buses"
+          echo "dtparam=i2c_arm=on" | sudo tee --append /mnt/boot/config.txt
+          echo "dtparam=spi=on" | sudo tee --append /mnt/boot/config.txt
+  
+          echo "unmount"
+          sudo umount /mnt/root
+          sudo umount /mnt/boot
+          
+          echo "compress"
+          xz -v --compress -9 --extreme ./2024-11-19-raspios-bookworm-arm64-lite.img
+
+      - name: "Upload image"
+        uses: actions/upload-artifact@v4
+        with:
+          name: rpi_puv_image
+          path: ./2024-11-19-raspios-bookworm-arm64-lite.img.xz
+          compression-level: 0
+          if-no-files-found: error
