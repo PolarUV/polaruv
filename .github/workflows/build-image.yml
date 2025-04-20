@@ -19,7 +19,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        distro: [ focal, jammy, noble, bullseye, bookworm ]
+        distro: [ jammy, noble, bookworm ]
         os: [ ubuntu-24.04, ubuntu-24.04-arm ]
     steps:
       - name: Clone puv-ci
@@ -52,7 +52,7 @@ jobs:
       - build
     strategy:
       matrix:
-        distro: [ focal, jammy, noble, bullseye, bookworm ]
+        distro: [ jammy, noble, bullseye, bookworm ]
     steps:
       - name: Clone puv-ci
         uses: actions/checkout@v4
