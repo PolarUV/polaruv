@@ -52,7 +52,7 @@ jobs:
       - build
     strategy:
       matrix:
-        distro: [ jammy, noble, bullseye, bookworm ]
+        distro: [ jammy, noble, bookworm ]
     steps:
       - name: Clone puv-ci
         uses: actions/checkout@v4
