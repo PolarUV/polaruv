@@ -21,7 +21,7 @@ jobs:
             os: ubuntu-24.04-arm
     runs-on: ${{matrix.os}}
     container:
-      image: polaruv/robot:${{ matrix.distro }}
+      image: polaruv/env:${{ matrix.distro }}
       env:
         VCPKG_BINARY_SOURCES: "clear;x-gha,readwrite"
         VCPKG_FORCE_SYSTEM_BINARIES: 1

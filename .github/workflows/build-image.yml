@@ -10,8 +10,7 @@ on:
         type: choice
         options:
           - compiler
-          - client
-          - robot
+          - env
 
 jobs:
   build:
