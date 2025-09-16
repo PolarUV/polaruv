@@ -22,6 +22,7 @@ jobs:
     runs-on: ${{matrix.os}}
     container:
       image: polaruv/env:${{ matrix.distro }}
+      options: --user root:root
       env:
         VCPKG_BINARY_SOURCES: "clear;x-gha,readwrite"
         VCPKG_FORCE_SYSTEM_BINARIES: 1
@@ -42,6 +43,7 @@ jobs:
             core.exportVariable('ACTIONS_CACHE_URL', process.env.ACTIONS_CACHE_URL || '');
             core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN || '');
       - name: "Build"
+        shell: bash -leo pipefail {0}
         run: |
           /usr/local/bin/cmake -DCMAKE_BUILD_TYPE=Release --preset release -S ./robot -B ./build
           /usr/local/bin/cmake --build ./build --target package -j
