@@ -8,6 +8,10 @@ on:
         description: Pull Request number
         required: false
 
+defaults:
+  run:
+    shell: bash
+
 jobs:
   robot-package:
     strategy:
@@ -43,8 +47,8 @@ jobs:
             core.exportVariable('ACTIONS_CACHE_URL', process.env.ACTIONS_CACHE_URL || '');
             core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN || '');
       - name: "Build"
-        shell: bash -leo pipefail {0}
         run: |
+          . /root/.nvm/nvm.sh
           /usr/local/bin/cmake -DCMAKE_BUILD_TYPE=Release --preset release -S ./robot -B ./build
           /usr/local/bin/cmake --build ./build --target package -j
       - name: "Collect package"
