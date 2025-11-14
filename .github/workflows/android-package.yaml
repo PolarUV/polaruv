@@ -1,4 +1,4 @@
-name: Android Build
+name: Android App Build
 
 on:
   workflow_dispatch:
@@ -30,3 +30,4 @@ jobs:
           name: puv-debug-${{ github.sha }}
           path: app/build/outputs/apk/debug/*.apk
           retention-days: 30
+
