@@ -16,7 +16,6 @@ jobs:
         with:
           java-version: '17'
           distribution: 'temurin'
-          cache: gradle
           
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew
@@ -30,4 +29,5 @@ jobs:
           name: puv-debug-${{ github.sha }}
           path: app/build/outputs/apk/debug/*.apk
           retention-days: 30
+
 
