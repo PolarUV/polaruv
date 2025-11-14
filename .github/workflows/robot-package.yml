@@ -1,35 +1,108 @@
-name: Android Build
+name: "Build robot package"
 
 on:
   workflow_dispatch:
+    inputs:
+      pr:
+        type: number
+        description: Pull Request number
+        required: false
+
+defaults:
+  run:
+    shell: bash
 
 jobs:
-  build:
-    runs-on: ubuntu-latest
-    
+  robot-package:
+    strategy:
+      matrix:
+        distro: [ jammy, noble, bookworm, trixie ]
+        arch: [ amd64, arm64 ]
+        include:
+          - arch: amd64
+            os: ubuntu-24.04
+          - arch: arm64
+            os: ubuntu-24.04-arm
+    runs-on: ${{matrix.os}}
+    container:
+      image: polaruv/env:${{ matrix.distro }}
+      options: --user root:root
+      env:
+        VCPKG_BINARY_SOURCES: "clear;x-gha,readwrite"
+        VCPKG_FORCE_SYSTEM_BINARIES: 1
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         with:
-          repository: PolarUV/android
+          repository: PolarUV/robot
           ssh-key: ${{ secrets.SSH_KEY }}
-        
-      - name: Set up JDK 17
-        uses: actions/setup-java@v4
+          path: robot
+          fetch-depth: 0
+      - if: github.event.inputs.pr != ''
+        name: "checkout on PR"
+        run: cd robot && git pull origin pull/${{ inputs.pr }}/head
+      - name: Export GitHub Actions cache environment variables
+        uses: actions/github-script@v7
         with:
-          java-version: '17'
-          distribution: 'temurin'
-          cache: gradle
-          
-      - name: Grant execute permission for gradlew
-        run: chmod +x gradlew
-        
-      - name: Build Debug APK
-        run: ./gradlew assembleDebug
-          
-      - name: Upload APK
+          script: |
+            core.exportVariable('ACTIONS_CACHE_URL', process.env.ACTIONS_CACHE_URL || '');
+            core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN || '');
+      - name: "Build"
+        run: |
+          . /root/.nvm/nvm.sh
+          /usr/local/bin/cmake -DCMAKE_BUILD_TYPE=Release --preset release -S ./robot -B ./build
+          /usr/local/bin/cmake --build ./build --target package -j
+      - name: "Collect package"
         uses: actions/upload-artifact@v4
         with:
-          name: puv-debug-${{ github.sha }}
-          path: app/build/outputs/apk/debug/*.apk
-          retention-days: 30
+          name: robot_${{ matrix.distro }}_${{matrix.arch}}
+          path: ./build/polaruv_*.deb
+          compression-level: 0
+          if-no-files-found: error
+
+  rpi-image:
+    runs-on: ubuntu-24.04-arm
+    needs:
+      - robot-package
+
+    steps:
+      - name: Get trixie arm64 deb package
+        uses: actions/download-artifact@v4
+        with:
+          path: ${{ runner.temp }}/
+          pattern: robot_trixie_arm64
+      - name: Install robot into image
+        run: |
+          echo "download and extract image"
+          wget https://downloads.raspberrypi.org/raspios_lite_arm64/images/raspios_lite_arm64-2025-10-02/2025-10-01-raspios-trixie-arm64-lite.img.xz
+          xz -d -v ./2025-10-01-raspios-trixie-arm64-lite.img.xz
+          
+          echo "setup mounts"
+          res=$(sudo losetup -fP --show 2025-10-01-raspios-trixie-arm64-lite.img)
+          sudo mkdir -p /mnt/{boot,root}
+          sudo mount ${res}p1 /mnt/boot
+          sudo mount ${res}p2 /mnt/root
+
+          echo "copy and install package"
+          ls -R ${{ runner.temp }}
+          sudo cp ${{ runner.temp }}/robot_trixie_arm64/*.deb /mnt/root/root
+          sudo chroot /mnt/root /usr/bin/bash -c "apt install /root/*.deb"
+          sudo chroot /mnt/root /usr/bin/bash -c "rm -rf /root/*.deb"
+          
+          echo "Setup buses"
+          echo "dtparam=i2c_arm=on" | sudo tee --append /mnt/boot/config.txt
+          echo "dtparam=spi=on" | sudo tee --append /mnt/boot/config.txt
+  
+          echo "unmount"
+          sudo umount /mnt/root
+          sudo umount /mnt/boot
+          
+          echo "compress"
+          xz -v --compress -9 --extreme ./2025-10-01-raspios-trixie-arm64-lite.img
+
+      - name: "Upload image"
+        uses: actions/upload-artifact@v4
+        with:
+          name: rpi_puv_image
+          path: ./2025-10-01-raspios-trixie-arm64-lite.img.xz
+          compression-level: 0
+          if-no-files-found: error
