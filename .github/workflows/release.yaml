@@ -1,0 +1,94 @@
+name: Create Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: 'Release tag name'
+        required: true
+        type: string
+
+permissions: write-all
+
+jobs:
+  call-android-package:
+    name: Build Android Package
+    uses: ./.github/workflows/android-package.yml
+    secrets: inherit
+
+  call-robot-package:
+    name: Build Robot Package
+    uses: ./.github/workflows/robot-package.yml
+    secrets: inherit
+
+  create-tag:
+    name: Create Tag
+    needs: [ call-android-package, call-robot-package ]
+    runs-on: ubuntu-latest
+    outputs:
+      tag_name: ${{ steps.create_tag.outputs.tag_name }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create and push tag
+        id: create_tag
+        run: |
+          TAG_NAME="${{ inputs.release_tag }}"
+          
+          # Проверяем, существует ли тег
+          if git rev-parse "$TAG_NAME" >/dev/null 2>&1; then
+            echo "Tag $TAG_NAME already exists!"
+            exit 0
+          fi
+
+          # Создаем тег
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag "$TAG_NAME"
+          git push origin "$TAG_NAME"
+          echo "tag_name=$TAG_NAME" >> $GITHUB_OUTPUT
+          echo "Created and pushed tag: $TAG_NAME"
+
+  collect-artifacts-and-release:
+    name: Collect Artifacts and Create Release
+    needs: [ create-tag ]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download Android Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts/
+
+      - name: List downloaded artifacts
+        run: |
+          echo "Built artifacts:"
+          ls -la artifacts/ || echo "No artifacts"
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2.4.2
+        with:
+          tag_name: ${{ needs.create-tag.outputs.tag_name }}
+          name: Release ${{ inputs.release_tag }}
+          body: |
+            Automated release created via workflow dispatch
+            
+            **Tag:** ${{ inputs.release_tag }}
+            **Commit:** ${{ github.sha }}
+            **Created:** ${{ fromJSON(format('"{0}"', fromJSON(toJSON(github.event.repository.updated_at)))) }}
+            
+            Contains:
+            - Android apk
+            - Robot deb packages
+            - Raspberry pi Robot image
+          draft: true
+          prerelease: false
+          files: |
+            artifacts/**/*.apk
+            artifacts/**/*.deb
+            artifacts/**/*.img.xz
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
