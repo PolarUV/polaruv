@@ -1,6 +1,7 @@
 name: Android App Build
 
 on:
+  workflow_call:
   workflow_dispatch:
     inputs:
       build_type:
