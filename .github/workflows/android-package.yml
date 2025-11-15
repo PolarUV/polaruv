@@ -6,7 +6,7 @@ on:
       build_type:
         description: 'Build type'
         required: true
-        default: 'debug'
+        default: 'release'
         type: choice
         options:
           - debug
