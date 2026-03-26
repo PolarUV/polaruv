@@ -15,7 +15,7 @@ flowchart TB
     RTP["`UDP multicast RTP`"]
     Web["`Classic web application`"]
 
-    Settings --> UDP
+
     Settings --> Web
     Control --> UDP
     Video --> RTP
@@ -33,7 +33,7 @@ flowchart TB
         Web["`Web client`"]
     end
 
-    Robot <-- UDP Settings --> Client
+
     Robot <-- Video --> Client
     Robot <-- Control --> Client
     Robot <-- WEB Settings --> Android
