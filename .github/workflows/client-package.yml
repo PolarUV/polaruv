@@ -8,13 +8,9 @@ on:
         description: Pull Request number
         required: false
 
-env:
-  VCPKG_BINARY_SOURCES: "clear;x-gha,readwrite"
-
 jobs:
   client-package:
-    runs-on:
-      windows-latest
+    runs-on: windows-latest
     defaults:
       run:
         shell: pwsh
@@ -23,6 +19,7 @@ jobs:
         run: |
           git config --global http.version HTTP/1.1
           git config --global http.postBuffer 2038500000
+
       - name: "Clone repo"
         uses: actions/checkout@v4
         with:
@@ -31,29 +28,38 @@ jobs:
           submodules: 'recursive'
           path: client
           fetch-depth: 0
+
       - if: github.event.inputs.pr != ''
         name: "Checkout on PR"
         run: cd client && git pull origin pull/${{ inputs.pr }}/head
+
       - name: setup devcmd
         uses: ilammy/msvc-dev-cmd@v1.13.0
         with:
           arch: 'x64'
+
       - name: "Setup dependencies"
         run: |
           choco install ninja nsis
-      - name: "Export GitHub Actions cache environment variables"
-        uses: actions/github-script@v7
+
+      - name: "Cache vcpkg binary archives"
+        uses: actions/cache@v4
         with:
-          script: |
-            core.exportVariable('ACTIONS_CACHE_URL', process.env.ACTIONS_CACHE_URL || '');
-            core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN || '');
-      - name: "Boostrap VCPKG"
+          path: ${{ runner.tool_cache }}/vcpkg/archives
+          key: vcpkg-win-archives-${{ hashFiles('client/vcpkg.json') }}
+          restore-keys: |
+            vcpkg-win-archives-
+
+      - name: "Bootstrap VCPKG"
         run: ${{ github.workspace }}\client\vcpkg\bootstrap-vcpkg.bat -disableMetrics
+
       - name: "Setup cmake"
         run: |
           cmake -DVCPKG_BUILD_TYPE=Release -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_COMPILER=cl -DCMAKE_C_COMPILER=cl -S ${{ github.workspace }}\client -B ${{ github.workspace }}\client\build
+
       - name: "Build package"
         run: cmake --build ${{ github.workspace }}\client\build --config Release --target package -j 4
+
       - name: "Collect package"
         uses: actions/upload-artifact@v4
         with:

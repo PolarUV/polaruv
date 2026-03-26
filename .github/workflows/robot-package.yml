@@ -28,9 +28,6 @@ jobs:
     container:
       image: polaruv/env:${{ matrix.distro }}
       options: --user root:root
-      env:
-        VCPKG_BINARY_SOURCES: "clear;x-gha,readwrite"
-        VCPKG_FORCE_SYSTEM_BINARIES: 1
     steps:
       - uses: actions/checkout@v4
         with:
@@ -38,20 +35,27 @@ jobs:
           ssh-key: ${{ secrets.SSH_KEY }}
           path: robot
           fetch-depth: 0
+
       - if: github.event.inputs.pr != ''
         name: "checkout on PR"
         run: cd robot && git pull origin pull/${{ inputs.pr }}/head
-      - name: Export GitHub Actions cache environment variables
-        uses: actions/github-script@v7
+
+      - name: "Cache vcpkg packages"
+        uses: actions/cache@v4
+        id: vcpkg-cache
         with:
-          script: |
-            core.exportVariable('ACTIONS_CACHE_URL', process.env.ACTIONS_CACHE_URL || '');
-            core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN || '');
+          path: /root/.cache/vcpkg
+          key: ${{ matrix.distro }}-${{ matrix.arch }}-vcpkg-${{ hashFiles('robot/vcpkg.json') }}
+          restore-keys: |
+            ${{ matrix.distro }}-${{ matrix.arch }}-vcpkg-${{ hashFiles('robot/vcpkg.json') }}-
+            ${{ matrix.distro }}-${{ matrix.arch }}-vcpkg-
+
       - name: "Build"
         run: |
           . /root/.nvm/nvm.sh
           /usr/local/bin/cmake -DCMAKE_BUILD_TYPE=Release --preset release -S ./robot -B ./build
           /usr/local/bin/cmake --build ./build --target package -j
+
       - name: "Collect package"
         uses: actions/upload-artifact@v4
         with:
@@ -76,7 +80,7 @@ jobs:
           echo "download and extract image"
           wget https://downloads.raspberrypi.org/raspios_lite_arm64/images/raspios_lite_arm64-2025-10-02/2025-10-01-raspios-trixie-arm64-lite.img.xz
           xz -d -v ./2025-10-01-raspios-trixie-arm64-lite.img.xz
-          
+
           echo "setup mounts"
           res=$(sudo losetup -fP --show 2025-10-01-raspios-trixie-arm64-lite.img)
           sudo mkdir -p /mnt/{boot,root}
@@ -88,15 +92,15 @@ jobs:
           sudo cp ${{ runner.temp }}/robot_trixie_arm64/*.deb /mnt/root/root
           sudo chroot /mnt/root /usr/bin/bash -c "apt install /root/*.deb"
           sudo chroot /mnt/root /usr/bin/bash -c "rm -rf /root/*.deb"
-          
+
           echo "Setup buses"
           echo "dtparam=i2c_arm=on" | sudo tee --append /mnt/boot/config.txt
           echo "dtparam=spi=on" | sudo tee --append /mnt/boot/config.txt
-  
+
           echo "unmount"
           sudo umount /mnt/root
           sudo umount /mnt/boot
-          
+
           echo "compress"
           xz -v --compress -9 --extreme ./2025-10-01-raspios-trixie-arm64-lite.img
 
