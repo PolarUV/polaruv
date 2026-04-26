@@ -6,7 +6,7 @@ README: [Eng](README.md), Rus
 
 [Проблемы](https://github.com/PolarUV/polaruv/issues)
 
-# PoalrUV clinet
+# PoalrUV client
 
 [Гайд по установке](https://github.com/PolarUV/polaruv/wiki/Client) (wip)
 
