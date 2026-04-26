@@ -46,7 +46,7 @@ flowchart TB
 
 [Issues](https://github.com/PolarUV/polaruv/issues)
 
-# PoalrUV clinet
+# PoalrUV client
 
 [Installation guide](https://github.com/PolarUV/polaruv/wiki/Client) (wip)
 
