@@ -90,7 +90,7 @@ jobs:
           echo "copy and install package"
           ls -R ${{ runner.temp }}
           sudo cp ${{ runner.temp }}/robot_trixie_arm64/*.deb /mnt/root/root
-          sudo chroot /mnt/root /usr/bin/bash -c "apt install /root/*.deb"
+          sudo chroot /mnt/root /usr/bin/bash -c "apt install /root/*.deb -y"
           sudo chroot /mnt/root /usr/bin/bash -c "rm -rf /root/*.deb"
 
           echo "Setup buses"
