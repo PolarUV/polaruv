@@ -37,7 +37,7 @@ jobs:
   robot-package:
     strategy:
       matrix:
-        distro: [ jammy, noble, bookworm, trixie ]
+        distro: [ jammy, noble, bookworm, trixie, resolute ]
         arch: [ amd64, arm64 ]
         include:
           - arch: amd64
