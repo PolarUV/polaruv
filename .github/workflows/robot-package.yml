@@ -2,16 +2,33 @@ name: "Build robot package"
 
 on:
   workflow_call:
+    inputs:
+      pr:
+        type: number
+        default: 0
+        description: Pull Request number (0 = none)
+      deploy:
+        type: boolean
+        default: false
+        description: Deploy built packages to apt repository
   workflow_dispatch:
     inputs:
       pr:
         type: number
         description: Pull Request number
         required: false
+      deploy:
+        type: boolean
+        default: false
+        description: Deploy built packages to apt repository
 
 defaults:
   run:
     shell: bash
+
+permissions:
+  actions: read
+  contents: read
 
 env:
   RPI_IMAGE: 2026-09-15-raspios-trixie-arm64-lite.img
@@ -27,7 +44,7 @@ jobs:
             os: ubuntu-24.04
           - arch: arm64
             os: ubuntu-24.04-arm
-    runs-on: ${{matrix.os}}
+    runs-on: ${{ matrix.os }}
     container:
       image: polaruv/env:${{ matrix.distro }}
       options: --user root:root
@@ -39,7 +56,7 @@ jobs:
           path: robot
           fetch-depth: 0
 
-      - if: github.event.inputs.pr != ''
+      - if: inputs.pr
         name: "checkout on PR"
         run: cd robot && git pull origin pull/${{ inputs.pr }}/head
 
@@ -62,22 +79,28 @@ jobs:
       - name: "Collect package"
         uses: actions/upload-artifact@v4
         with:
-          name: robot_${{ matrix.distro }}_${{matrix.arch}}
+          name: robot_${{ matrix.distro }}_${{ matrix.arch }}
           path: ./build/polaruv_*.deb
           compression-level: 0
           if-no-files-found: error
 
+  deploy-apt:
+    needs: [ robot-package ]
+    if: ${{ inputs.deploy }}
+    uses: ./.github/workflows/apt-deploy.yml
+    secrets: inherit
+    # run_id не передаём — apt-deploy возьмёт артефакты из текущего run'а
+
   rpi-image:
     runs-on: ubuntu-24.04-arm
-    needs:
-      - robot-package
-
+    needs: [ robot-package ]
     steps:
       - name: Get trixie arm64 deb package
         uses: actions/download-artifact@v4
         with:
           path: ${{ runner.temp }}/
           pattern: robot_trixie_arm64
+
       - name: Install robot into image
         run: |
           echo "download and extract image"

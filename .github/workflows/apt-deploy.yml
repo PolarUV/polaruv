@@ -1,0 +1,82 @@
+name: "Deploy to apt repository"
+
+on:
+  workflow_call:
+    inputs:
+      run_id:
+        type: string
+        default: ''
+        description: "Run ID to grab artifacts from. Empty = current run."
+  workflow_dispatch:
+    inputs:
+      run_id:
+        type: string
+        required: true
+        description: "Run ID of the build to grab artifacts from"
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          # Если run_id не задан — берём текущий run (цепочка из robot-package.yml).
+          # Если задан — берём артефакты из указанного run'а (ручной запуск).
+          run-id: ${{ inputs.run_id || github.run_id }}
+          github-token: ${{ github.token }}
+          path: debs
+          pattern: robot_*
+
+      - name: Show downloaded artifacts
+        run: ls -R debs
+
+      - name: Setup deploy key
+        env:
+          APT_DEPLOY_KEY: ${{ secrets.SSH_KEY }}
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh
+          printf '%s\n' "$APT_DEPLOY_KEY" > ~/.ssh/apt_deploy
+          chmod 600 ~/.ssh/apt_deploy
+          ssh-keyscan github.com >> ~/.ssh/known_hosts
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git config --global core.sshCommand "ssh -i $HOME/.ssh/apt_deploy -o IdentitiesOnly=yes"
+
+      - name: Clone apt repository
+        run: git clone git@github.com:PolarUV/apt.git apt-repo
+
+      - name: Copy .deb files into pool
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          found=0
+          for d in debs/robot_*; do
+            name=$(basename "$d")              # e.g. robot_trixie_arm64
+            distro=$(echo "$name" | cut -d_ -f2)
+            dest="apt-repo/pool/$distro/main/r/robot"
+            mkdir -p "$dest"
+            cp "$d"/*.deb "$dest/"
+            found=$((found + 1))
+          done
+          if [ "$found" -eq 0 ]; then
+            echo "::error::No robot_* artifacts found in debs/"
+            exit 1
+          fi
+
+      - name: Commit and push
+        working-directory: apt-repo
+        run: |
+          set -euo pipefail
+          git add .
+          if git diff --cached --quiet; then
+            echo "No changes to commit"
+          else
+            git commit -m "robot: update packages (${GITHUB_SHA::7})"
+            git push
+          fi
