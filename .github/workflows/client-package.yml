@@ -1,6 +1,12 @@
 name: "Build client package"
 
 on:
+  workflow_call:
+    inputs:
+      pr:
+        type: number
+        default: 0
+        description: Pull Request number (0 = none)
   workflow_dispatch:
     inputs:
       pr:
@@ -8,8 +14,16 @@ on:
         description: Pull Request number
         required: false
 
+defaults:
+  run:
+    shell: bash
+
+permissions:
+  actions: read
+  contents: read
+
 jobs:
-  client-package:
+  client-win:
     runs-on: windows-latest
     defaults:
       run:
@@ -29,7 +43,7 @@ jobs:
           path: client
           fetch-depth: 0
 
-      - if: github.event.inputs.pr != ''
+      - if: inputs.pr
         name: "Checkout on PR"
         run: cd client && git pull origin pull/${{ inputs.pr }}/head
 
@@ -39,8 +53,7 @@ jobs:
           arch: 'x64'
 
       - name: "Setup dependencies"
-        run: |
-          choco install ninja nsis
+        run: choco install ninja nsis
 
       - name: "Cache vcpkg binary archives"
         uses: actions/cache@v4
@@ -63,7 +76,57 @@ jobs:
       - name: "Collect package"
         uses: actions/upload-artifact@v4
         with:
-          name: client
+          name: client-windows
           path: ${{ github.workspace }}/client/build/puv-client-*.exe
+          compression-level: 0
+          if-no-files-found: error
+
+  client-deb:
+    strategy:
+      matrix:
+        distro: [ jammy, noble, bookworm, trixie, resolute ]
+        arch: [ amd64, arm64 ]
+        include:
+          - arch: amd64
+            os: ubuntu-24.04
+          - arch: arm64
+            os: ubuntu-24.04-arm
+    runs-on: ${{ matrix.os }}
+    container:
+      image: polaruv/env:${{ matrix.distro }}
+      options: --user root:root
+    steps:
+      - name: "Clone repo"
+        uses: actions/checkout@v4
+        with:
+          repository: PolarUV/client
+          ssh-key: ${{ secrets.SSH_KEY }}
+          submodules: recursive
+          path: client
+          fetch-depth: 0
+
+      - if: inputs.pr
+        name: "Checkout on PR"
+        run: cd client && git pull origin pull/${{ inputs.pr }}/head
+
+      - name: "Cache vcpkg packages"
+        uses: actions/cache@v4
+        with:
+          path: /root/.cache/vcpkg
+          key: ${{ matrix.distro }}-${{ matrix.arch }}-vcpkg-client-${{ hashFiles('client/vcpkg.json') }}
+          restore-keys: |
+            ${{ matrix.distro }}-${{ matrix.arch }}-vcpkg-client-
+            ${{ matrix.distro }}-${{ matrix.arch }}-vcpkg-
+
+      - name: "Build"
+        run: |
+          /usr/local/bin/cmake -DCMAKE_BUILD_TYPE=Release -S ./client -B ./build
+          /usr/local/bin/cmake --build ./build --target package -j
+
+      - name: "Collect package"
+        uses: actions/upload-artifact@v4
+        with:
+          name: client_${{ matrix.distro }}_${{ matrix.arch }}
+          path: ./build/puv-client-*.deb
           compression-level: 0
           if-no-files-found: error
